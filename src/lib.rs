@@ -1,4 +1,8 @@
+use itertools::Itertools;
 use std::collections::HashMap;
+use std::env;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Error, ErrorKind};
 use std::{fmt, ops};
 
 pub enum Outcome {
@@ -9,8 +13,8 @@ pub enum Outcome {
     IllegalRow,
     IllegalColumn,
     IllegalGame,
-    // InvalidFile,
-    // FileNotFound,
+    InvalidFile,
+    FileNotFound,
 }
 
 impl fmt::Display for Outcome {
@@ -23,15 +27,15 @@ impl fmt::Display for Outcome {
             Outcome::IllegalRow => write!(f, "5"),
             Outcome::IllegalColumn => write!(f, "6"),
             Outcome::IllegalGame => write!(f, "7"),
-            // Outcome::InvalidFile => write!(f, "8"),
-            // Outcome::FileNotFound => write!(f, "9"),
+            Outcome::InvalidFile => write!(f, "8"),
+            Outcome::FileNotFound => write!(f, "9"),
         }
     }
 }
 
 type Player = u8;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 struct Direction(i8, i8);
 
 const HORIZONTAL: Direction = Direction(1, 0);
@@ -41,7 +45,7 @@ const BACKWARD_DIAGONAL: Direction = Direction(-1, 1);
 
 const ALL_DIRECTIONS: [Direction; 4] = [HORIZONTAL, VERTICAL, FORWARD_DIAGONAL, BACKWARD_DIAGONAL];
 
-#[derive(Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 struct Location(u32, u32);
 
 impl ops::Add<Direction> for Location {
@@ -164,6 +168,18 @@ pub struct Game {
 }
 
 impl Game {
+    pub fn from_string(desc: &str) -> Result<Game, Outcome> {
+        if let Some((width, height, win_length)) = desc
+            .split_ascii_whitespace()
+            .map(|v| v.parse::<u32>().expect("a number"))
+            .collect_tuple()
+        {
+            Game::new(width, height, win_length)
+        } else {
+            Err(Outcome::InvalidFile)
+        }
+    }
+
     pub fn new(width: u32, height: u32, win_length: u32) -> Result<Game, Outcome> {
         if win_length > width && win_length > height {
             Err(Outcome::IllegalGame)
@@ -177,7 +193,32 @@ impl Game {
         }
     }
 
-    pub fn make_move(&mut self, player: Player, column: u32) -> Option<Outcome> {
+    pub fn play(&mut self, moves: &Vec<u32>) -> Outcome {
+        let mut player = 1;
+
+        for (idx, &column) in moves.iter().enumerate() {
+            let result = self.make_move(player, column);
+            match result {
+                Some(outcome @ Outcome::PlayerWin(_)) => {
+                    return if moves.len() > idx + 1 {
+                        Outcome::IllegalContinue
+                    } else {
+                        outcome
+                    }
+                }
+                Some(outcome) => return outcome,
+                None => match player {
+                    1 => player = 2,
+                    2 => player = 1,
+                    _ => (),
+                },
+            }
+        }
+
+        Outcome::Incomplete
+    }
+
+    fn make_move(&mut self, player: Player, column: u32) -> Option<Outcome> {
         match self.grid.insert_piece(player, column) {
             Ok(location) => {
                 self.last_move = Some(location);
@@ -205,7 +246,7 @@ impl Game {
         }
     }
 
-    pub fn could_win(&self, player: Player) -> bool {
+    fn could_win(&self, player: Player) -> bool {
         if let Some(val) = self.moves_made.get(&player) {
             *val >= self.win_length
         } else {
@@ -214,32 +255,72 @@ impl Game {
     }
 }
 
-pub fn run() -> Outcome {
-    let moves = [1, 2, 1, 2, 1];
-    let mut game = match Game::new(3, 3, 3) {
-        Ok(game) => game,
+pub struct Config {
+    filename: String,
+}
+
+impl Config {
+    pub fn new(mut args: env::Args) -> Result<Config, &'static str> {
+        args.next();
+
+        let filename = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Provide one input file"),
+        };
+
+        Ok(Config { filename })
+    }
+}
+
+pub fn run(config: Config) -> Outcome {
+    let file = match File::open(config.filename) {
+        Ok(f) => f,
+        Err(_) => return Outcome::FileNotFound,
+    };
+    let mut file = BufReader::new(file);
+
+    let mut header = String::new();
+    file.read_line(&mut header).expect("couldn't read file");
+
+    let mut game = match Game::from_string(&header) {
+        Ok(g) => g,
         Err(outcome) => return outcome,
     };
-    let mut player = 1;
 
-    for (idx, &column) in moves.iter().enumerate() {
-        let result = game.make_move(player, column);
-        match result {
-            Some(outcome @ Outcome::PlayerWin(_)) => {
-                return if moves.len() > idx + 1 {
-                    Outcome::IllegalContinue
-                } else {
-                    outcome
-                }
-            }
-            Some(outcome) => return outcome,
-            None => match player {
-                1 => player = 2,
-                2 => player = 1,
-                _ => (),
-            },
-        }
+    if let Ok(moves) = file
+        .lines()
+        .map(|line| {
+            line.and_then(|v| {
+                v.parse::<u32>()
+                    .map_err(|e| Error::new(ErrorKind::InvalidData, e))
+                    .map(|v| v - 1)
+            })
+        })
+        .collect()
+    {
+        game.play(&moves)
+    } else {
+        Outcome::InvalidFile
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_direction() {
+        let location = Location(1, 2);
+        let direction = Direction(1, -1);
+
+        assert_eq!(location + direction, Ok(Location(2, 1)));
     }
 
-    Outcome::Incomplete
+    #[test]
+    fn sub_direction() {
+        let location = Location(1, 2);
+        let direction = Direction(1, -1);
+
+        assert_eq!(location - direction, Ok(Location(0, 3)));
+    }
 }
