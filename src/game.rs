@@ -16,7 +16,7 @@ impl Game {
     pub fn from_string(desc: &str) -> Result<Game, Outcome> {
         if let Some((width, height, win_length)) = desc
             .split_ascii_whitespace()
-            .map(|v| v.parse::<u32>().expect("a number"))
+            .filter_map(|v| v.parse::<u32>().ok())
             .collect_tuple()
         {
             Game::new(width, height, win_length)
