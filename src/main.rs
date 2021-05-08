@@ -224,19 +224,17 @@ fn main() {
     let mut game = Game::new(3, 3, 3);
     let mut player = 1;
 
-    for (idx, column) in moves.iter().enumerate() {
-        let result = game.make_move(player, *column);
+    for (idx, &column) in moves.iter().enumerate() {
+        let result = game.make_move(player, column);
         match result {
-            Some(outcome) => match outcome {
-                Outcome::PlayerWin(_) => {
-                    if moves.len() > idx + 1 {
-                        exit_with_outcome(Outcome::IllegalContinue);
-                    } else {
-                        exit_with_outcome(outcome);
-                    }
+            Some(outcome @ Outcome::PlayerWin(_)) => {
+                if moves.len() > idx + 1 {
+                    exit_with_outcome(Outcome::IllegalContinue);
+                } else {
+                    exit_with_outcome(outcome);
                 }
-                _ => exit_with_outcome(outcome),
-            },
+            }
+            Some(outcome) => exit_with_outcome(outcome),
             None => match player {
                 1 => player = 2,
                 2 => player = 1,
