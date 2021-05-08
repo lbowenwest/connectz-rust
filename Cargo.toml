@@ -1,10 +1,16 @@
 [package]
-name = "connectz-rust"
+name = "connectz"
 version = "0.1.0"
 authors = ["Lygon Bowen-West <l.bowenwest@googlemail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "connectz"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 itertools = "0.10.0"
+
+[dependencies.pyo3]
+version = "0.13.2"
+features = ["extension-module"]

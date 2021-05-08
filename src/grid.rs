@@ -127,6 +127,7 @@ impl Grid {
         streak
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,10 +141,72 @@ mod tests {
     }
 
     #[test]
+    fn add_direction_column_error() {
+        let location = Location(0, 0);
+        let direction = Direction(-1, 0);
+
+        assert_eq!(location + direction, Err("already at first column"));
+    }
+
+    #[test]
+    fn add_direction_row_error() {
+        let location = Location(0, 0);
+        let direction = Direction(0, -1);
+
+        assert_eq!(location + direction, Err("already at first row"));
+    }
+
+    #[test]
     fn sub_direction() {
         let location = Location(1, 2);
         let direction = Direction(1, -1);
 
         assert_eq!(location - direction, Ok(Location(0, 3)));
+    }
+
+    #[test]
+    fn sub_direction_column_error() {
+        let location = Location(0, 0);
+        let direction = Direction(1, 0);
+
+        assert_eq!(location - direction, Err("already at first column"));
+    }
+
+    #[test]
+    fn sub_direction_row_error() {
+        let location = Location(0, 0);
+        let direction = Direction(0, 1);
+
+        assert_eq!(location - direction, Err("already at first row"));
+    }
+
+    #[test]
+    fn grid_full() {
+        let mut grid = Grid::with_dimensions(2, 2);
+
+        assert!(grid.insert_piece(1, 0).is_ok());
+        assert!(grid.insert_piece(1, 0).is_ok());
+        assert!(grid.insert_piece(1, 1).is_ok());
+        assert!(grid.insert_piece(1, 1).is_ok());
+
+        assert!(grid.is_full());
+    }
+
+    #[test]
+    fn inserting_bad_column() {
+        let mut grid = Grid::with_dimensions(2, 2);
+        let result = grid.insert_piece(1, 23).err();
+        assert_eq!(result, Some(Outcome::IllegalColumn));
+    }
+
+    #[test]
+    fn inserting_bad_row() {
+        let mut grid = Grid::with_dimensions(2, 2);
+
+        assert!(grid.insert_piece(1, 0).is_ok());
+        assert!(grid.insert_piece(1, 0).is_ok());
+
+        let result = grid.insert_piece(1, 0).err();
+        assert_eq!(result, Some(Outcome::IllegalRow));
     }
 }

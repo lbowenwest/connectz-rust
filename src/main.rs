@@ -1,7 +1,7 @@
 use std::env;
 use std::process;
 
-use connectz_rust::Config;
+use connectz::Config;
 
 fn main() {
     let config = Config::new(env::args()).unwrap_or_else(|err| {
@@ -9,6 +9,6 @@ fn main() {
         process::exit(1);
     });
 
-    let outcome = connectz_rust::run(config);
+    let outcome = connectz::run(config);
     println!("{}", outcome);
 }

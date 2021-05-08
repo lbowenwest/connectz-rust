@@ -1,3 +1,5 @@
+use pyo3::prelude::*;
+use pyo3::wrap_pyfunction;
 use std::env;
 use std::fmt;
 use std::fs::File;
@@ -8,6 +10,7 @@ use game::Game;
 mod game;
 mod grid;
 
+#[derive(PartialEq, Debug)]
 pub enum Outcome {
     Draw,
     PlayerWin(Player),
@@ -85,4 +88,17 @@ pub fn run(config: Config) -> Outcome {
     } else {
         Outcome::InvalidFile
     }
+}
+
+#[pyfunction]
+fn run_file(filename: String) -> PyResult<String> {
+    Ok(format!("{}", run(Config { filename })))
+}
+
+/// A Python module implemented in Rust.
+#[pymodule]
+fn connectz(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(run_file, m)?)?;
+
+    Ok(())
 }
