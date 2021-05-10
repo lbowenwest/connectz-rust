@@ -1,14 +1,65 @@
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
-use std::env;
 use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Error, ErrorKind};
+use std::num::ParseIntError;
+use std::{env, error};
 
 use game::Game;
 
 mod game;
 mod grid;
+
+#[derive(Debug)]
+pub enum ConnectzError {
+    Incomplete,
+    IllegalContinue,
+    IllegalRow,
+    IllegalColumn,
+    IllegalGame,
+    InvalidFile,
+    FileNotFound,
+    Argument(String),
+}
+
+impl fmt::Display for ConnectzError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ConnectzError::Incomplete => write!(f, "{}", 3),
+            ConnectzError::IllegalContinue => write!(f, "{}", 4),
+            ConnectzError::IllegalRow => write!(f, "{}", 5),
+            ConnectzError::IllegalColumn => write!(f, "{}", 6),
+            ConnectzError::IllegalGame => write!(f, "{}", 7),
+            ConnectzError::InvalidFile => write!(f, "{}", 8),
+            ConnectzError::FileNotFound => write!(f, "{}", 9),
+            ConnectzError::Argument(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+impl error::Error for ConnectzError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
+// Implement the conversion from `ParseIntError` to `DoubleError`.
+// This will be automatically called by `?` if a `ParseIntError`
+// needs to be converted into a `DoubleError`.
+impl From<ParseIntError> for ConnectzError {
+    fn from(_err: ParseIntError) -> ConnectzError {
+        ConnectzError::InvalidFile
+    }
+}
+
+impl From<std::io::Error> for ConnectzError {
+    fn from(_: Error) -> Self {
+        ConnectzError::FileNotFound
+    }
+}
+
+type Result<T> = std::result::Result<T, ConnectzError>;
 
 #[derive(PartialEq, Debug)]
 pub enum Outcome {
@@ -23,19 +74,31 @@ pub enum Outcome {
     FileNotFound,
 }
 
+impl Outcome {
+    pub fn as_u8(&self) -> &u8 {
+        match self {
+            Outcome::Draw => &0,
+            Outcome::PlayerWin(player) => player,
+            Outcome::Incomplete => &3,
+            Outcome::IllegalContinue => &4,
+            Outcome::IllegalRow => &5,
+            Outcome::IllegalColumn => &6,
+            Outcome::IllegalGame => &7,
+            Outcome::InvalidFile => &8,
+            Outcome::FileNotFound => &9,
+        }
+    }
+}
+
 impl fmt::Display for Outcome {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Outcome::Draw => write!(f, "0"),
-            Outcome::PlayerWin(player) => write!(f, "{}", player),
-            Outcome::Incomplete => write!(f, "3"),
-            Outcome::IllegalContinue => write!(f, "4"),
-            Outcome::IllegalRow => write!(f, "5"),
-            Outcome::IllegalColumn => write!(f, "6"),
-            Outcome::IllegalGame => write!(f, "7"),
-            Outcome::InvalidFile => write!(f, "8"),
-            Outcome::FileNotFound => write!(f, "9"),
-        }
+        write!(f, "{}", self.as_u8())
+    }
+}
+
+impl ToPyObject for Outcome {
+    fn to_object(&self, py: Python) -> PyObject {
+        self.as_u8().to_object(py)
     }
 }
 
@@ -46,32 +109,30 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new(mut args: env::Args) -> Result<Config, &'static str> {
+    pub fn new(mut args: env::Args) -> Result<Config> {
         args.next();
 
         let filename = match args.next() {
             Some(arg) => arg,
-            None => return Err("Provide one input file"),
+            None => {
+                return Err(ConnectzError::Argument(String::from(
+                    "Provide one input file",
+                )))
+            }
         };
 
         Ok(Config { filename })
     }
 }
 
-pub fn run(config: Config) -> Outcome {
-    let file = match File::open(config.filename) {
-        Ok(f) => f,
-        Err(_) => return Outcome::FileNotFound,
-    };
+pub fn run(config: Config) -> Result<Outcome> {
+    let file = File::open(config.filename)?;
     let mut file = BufReader::new(file);
 
     let mut header = String::new();
-    file.read_line(&mut header).expect("couldn't read file");
+    file.read_line(&mut header)?;
 
-    let mut game = match Game::from_string(&header) {
-        Ok(g) => g,
-        Err(outcome) => return outcome,
-    };
+    let mut game = Game::from_string(&header)?;
 
     if let Ok(moves) = file
         .lines()
@@ -84,21 +145,29 @@ pub fn run(config: Config) -> Outcome {
         })
         .collect()
     {
-        game.play(&moves)
+        Ok(game.play(&moves))
     } else {
-        Outcome::InvalidFile
+        Err(ConnectzError::InvalidFile)
     }
 }
 
 #[pyfunction]
 fn run_file(filename: String) -> PyResult<String> {
-    Ok(format!("{}", run(Config { filename })))
+    if let Ok(result) = run(Config { filename }) {
+        Ok(format!("{}", result))
+    } else {
+        Ok(String::from("-1"))
+    }
 }
+
+// create_exception!(connectz, ConnectzError, PyException);
 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn connectz(_py: Python, m: &PyModule) -> PyResult<()> {
+    // m.add("ConnectzError", py.get_type::<ConnectzError>())?;
     m.add_function(wrap_pyfunction!(run_file, m)?)?;
+    m.add_class::<Game>()?;
 
     Ok(())
 }

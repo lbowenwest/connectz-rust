@@ -9,6 +9,8 @@ fn main() {
         process::exit(1);
     });
 
-    let outcome = connectz::run(config);
-    println!("{}", outcome);
+    match connectz::run(config) {
+        Ok(outcome) => println!("{}", outcome),
+        Err(err) => println!("{}", err),
+    }
 }

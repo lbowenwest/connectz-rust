@@ -1,10 +1,11 @@
+use itertools::Itertools;
+use pyo3::prelude::*;
 use std::collections::HashMap;
 
-use itertools::Itertools;
-
 use crate::grid::{Grid, Location, ALL_DIRECTIONS};
-use crate::{Outcome, Player};
+use crate::{ConnectzError, Outcome, Player, Result};
 
+#[pyclass]
 pub struct Game {
     win_length: u32,
     grid: Grid,
@@ -13,7 +14,7 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn from_string(desc: &str) -> Result<Game, Outcome> {
+    pub fn from_string(desc: &str) -> Result<Game> {
         if let Some((width, height, win_length)) = desc
             .split_ascii_whitespace()
             .filter_map(|v| v.parse::<u32>().ok())
@@ -21,13 +22,13 @@ impl Game {
         {
             Game::new(width, height, win_length)
         } else {
-            Err(Outcome::InvalidFile)
+            Err(ConnectzError::InvalidFile)
         }
     }
 
-    pub fn new(width: u32, height: u32, win_length: u32) -> Result<Game, Outcome> {
+    pub fn new(width: u32, height: u32, win_length: u32) -> Result<Game> {
         if win_length > width && win_length > height {
-            Err(Outcome::IllegalGame)
+            Err(ConnectzError::IllegalGame)
         } else {
             Ok(Game {
                 win_length,
@@ -76,6 +77,7 @@ impl Game {
         };
 
         if self.could_win(player) {
+            // TODO parallellise this for fun and profit
             for direction in ALL_DIRECTIONS.iter() {
                 let streak = self.grid.get_streak(self.last_move.expect(""), *direction);
                 if streak >= self.win_length {
